@@ -1,0 +1,36 @@
+{
+    "Device": {
+        "Name": "hood",
+        "Command": {
+            "Name": "start",
+            "Key": "Cooking.Common.Program.Hood.Venting",
+            "Options": [
+                {
+                    "Name": "stage1",
+                    "Key": "Cooking.Common.Option.Hood.VentingLevel",
+                    "Value": "Cooking.Hood.EnumType.Stage.FanStage01"
+                },
+                {
+                    "Name": "stage2",
+                    "Key": "Cooking.Common.Option.Hood.VentingLevel",
+                    "Value": "Cooking.Hood.EnumType.Stage.FanStage01"
+                },
+                {
+                    "Name": "intentensive1",
+                    "Key": "Cooking.Common.Option.Hood.IntensiveLevel",
+                    "Value": "Cooking.Hood.EnumType.IntensiveStage1"
+                },
+                {
+                    "Name": "intentensive2",
+                    "Key": "Cooking.Common.Option.Hood.IntensiveLevel",
+                    "Value": "Cooking.Hood.EnumType.IntensiveStage2"
+                },
+                {
+                    "Name": "boost",
+                    "Key": "Cooking.Common.Option.Hood.Boost",
+                    "Value": "true"
+                }
+            ]
+        }
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "Appliance": {
+        "Name": "hood",
+        "Setting": [
+            {
+                "Name": "light",
+                "Key": "Cooking.Common.Setting.Lighting",
+                "Value": "value"
+            },
+            {
+                "Name": "brightness",
+                "Key": "Cooking.Common.Setting.LightingBrightness",
+                "Value": "value"
+            }
+        ]
+    }
+}

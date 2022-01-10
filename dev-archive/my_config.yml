@@ -1,0 +1,42 @@
+server:
+  host: localhost
+  port: 8088
+
+appliance:
+  hood: SIEMENS-LC...
+  washer: SIEMENS-WM...
+  dryer: SIEMENS-WT...
+
+commands:
+  appliance: 
+    appliance_name: "hood"
+    command:
+      command_name: "start"
+      command_key: Cooking.Common.Program.Hood.Venting
+      command_options:
+        - option_name: "stage1"
+          option_key: Cooking.Common.Option.Hood.VentingLevel
+          option_value: Cooking.Hood.EnumType.Stage.FanStage01
+        - option_name: "stage2"
+          option_key: Cooking.Common.Option.Hood.VentingLevel
+          option_value: Cooking.Hood.EnumType.Stage.FanStage01
+        - option_name: "intentensive1"
+          option_key: Cooking.Common.Option.Hood.IntensiveLevel
+          option_value: Cooking.Hood.EnumType.IntensiveStage1
+        - option_name: "intentensive2"
+          option_key: Cooking.Common.Option.Hood.IntensiveLevel
+          option_value: Cooking.Hood.EnumType.IntensiveStage2
+        - option_name: "boost"
+          option_key: Cooking.Common.Option.Hood.Boost
+          option_value: true
+
+settings:
+  appliance: 
+    appliance_name: hood
+    setting: 
+    - setting_name: light
+      setting_key: Cooking.Common.Setting.Lighting
+      setting_value: value
+    - setting_name: brightness
+      setting_key: Cooking.Common.Setting.LightingBrightness
+      setting_value: value

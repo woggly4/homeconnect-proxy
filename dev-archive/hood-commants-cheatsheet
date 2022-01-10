@@ -1,0 +1,81 @@
+{
+  "data": {
+    "key": "Cooking.Common.Program.Hood.Venting"
+  }
+}
+
+
+{
+  "data": {
+    "options": [
+      {
+        "key": "Cooking.Common.Option.Hood.VentingLevel",
+        "value": "Cooking.Hood.EnumType.Stage.FanStage02",
+        "name": "Fan setting",
+        "displayvalue": "Fan setting 2"
+      },
+      {
+        "key": "Cooking.Common.Option.Hood.IntensiveLevel",
+        "value": "Cooking.Hood.EnumType.IntensiveStage.IntensiveStageOff",
+        // IntensiveStage1 IntensiveStage2
+        "name": "Intensive settings",
+        "displayvalue": "Off"
+      },
+      {
+        "key": "BSH.Common.Option.ElapsedProgramTime",
+        "value": 69,
+        "unit": "seconds",
+        "name": "Program running time"
+      },
+      {
+        "key": "Cooking.Common.Option.Hood.Boost",
+        "value": false,
+        "name": "Boost setting"
+      }
+    ]
+  }
+}
+
+
+{
+    "data": {
+      "settings": [
+        {
+          "key": "Cooking.Common.Setting.Lighting",
+          "value": false,
+          "name": "Work light"
+        },
+        {
+          "key": "Cooking.Common.Setting.LightingBrightness",
+          "value": 10,
+          "unit": "%",
+          "name": "Brightness"
+        }
+      ]
+    }
+  }
+
+
+{
+    "data": {
+      "settings": [
+        {
+          "key": "BSH.Common.Setting.PowerState",
+          "value": "BSH.Common.EnumType.PowerState.Off",
+          "name": "Power status",
+          "displayvalue": "Off"
+        },
+        {
+          "key": "Cooking.Common.Setting.Lighting",
+          "value": false,
+          "name": "Work light"
+        },
+        {
+          "key": "Cooking.Common.Setting.LightingBrightness",
+          "value": 10,
+          "unit": "%",
+          "name": "Brightness"
+        }
+      ]
+    }
+  }
