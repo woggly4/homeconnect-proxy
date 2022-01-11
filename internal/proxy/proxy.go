@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	TokenURL   = "https://api.home-connect.com/security/oauth/token"
-	CookieName = "HomeConnect_Oauth2.cookie"
-	BaseURL    = "https://api.home-connect.com/api"
+	TokenURL = "https://api.home-connect.com/security/oauth/token"
+	BaseURL  = "https://api.home-connect.com/api"
 )
 
 type ClientData struct {
@@ -341,8 +340,7 @@ func getToken(w http.ResponseWriter, requestType string, code string, token *Tok
 	}
 	logger.Info("token expires in '{exp}", "exp", token.ExpiresIn)
 
-	token.ExpiresAt = epochSeconds() + 5
-	// token.ExpiresAt = epochSeconds() + int64(token.ExpiresIn) - DELTASECS
+	token.ExpiresAt = epochSeconds() + int64(token.ExpiresIn) - DELTASECS
 
 	t := *token //copy into t the value of the struct pointed to by token
 	err = cacheToken(t)
