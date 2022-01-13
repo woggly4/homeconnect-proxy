@@ -2,34 +2,17 @@ package proxy
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"text/template"
+	"time"
 
 	"io/ioutil"
 	"net/http"
 	"net/url"
 
-	"strings"
-	"time"
-
 	"github.com/ananchev/homeconnect-proxy/internal/logger"
 	"github.com/gorilla/mux"
 )
-
-const (
-	TokenURL = "https://api.home-connect.com/security/oauth/token"
-	BaseURL  = "https://api.home-connect.com/api"
-)
-
-type ClientData struct {
-	ClientId     string
-	ClientSecret string
-	ClientScopes string
-}
-
-var clientData ClientData
-var routes string
 
 // Documentation: https://api-docs.home-connect.com/authorization
 // Authorization URL: https://api.home-connect.com/security/oauth/authorize
@@ -65,10 +48,12 @@ func Run(port string, hcClientId, hcClientSecret, hcClientScopes string) {
 	r.HandleFunc("/homeappliances/{.*}/programs/selected/options", redirectToHomeConnect).Methods("GET", "PUT")
 	r.HandleFunc("/homeappliances/{.*}/programs/selected/options/{.*}", redirectToHomeConnect).Methods("GET", "PUT")
 
-	// status_events
+	// status
 	r.HandleFunc("/homeappliances/{.*}/status", redirectToHomeConnect).Methods("GET")
 	r.HandleFunc("/homeappliances/{.*}/status/{.*}", redirectToHomeConnect).Methods("GET")
-	r.HandleFunc("/homeappliances/events", redirectToHomeConnect).Methods("GET")
+
+	// status event streams are proxied in separate go routine
+	go StartServerSentEventProxy()
 
 	// images
 	r.HandleFunc("/homeappliances/{.*}/images", redirectToHomeConnect).Methods("GET")
@@ -85,14 +70,18 @@ func Run(port string, hcClientId, hcClientSecret, hcClientScopes string) {
 	getAllEndpoints(*r)
 
 	http.Handle("/", r)
-	logger.Info("Home Connect client started at http://localhost:{port}", "port", port)
+	logger.Info("Web interface accessible at http://localhost:{port}", "port", port)
+
 	http.ListenAndServe(":"+port, nil)
 	return
 }
 
 // Collect all endpoints into the routes global variable. This will be served upon accessing the '/'
 func getAllEndpoints(r mux.Router) {
-	routes = "available endpoints: \r\n"
+	routes = "Welcome to Home Connect proxy!"
+	// TODO: implement a check if there is token.cache file existing???
+	routes += "If running for first time, please make sure to authorize via '/proxy/auth' before using any of the '/homeconnect' routes.\r\n"
+	routes += "The available endpoints are listed below.\r\n"
 	r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		t, err := route.GetPathTemplate()
 		if err != nil {
@@ -101,6 +90,9 @@ func getAllEndpoints(r mux.Router) {
 		routes += "\t" + t + "\r\n"
 		return nil
 	})
+	//manually add the additional two SSE handles for complete list
+	routes += "\t" + "/homeappliances/{.*}/events" + "\r\n"
+	routes += "\t" + "/homeappliances/events" + "\r\n"
 }
 
 // Serve the available endpoints upon request to '/'
@@ -115,9 +107,7 @@ func homePageHandler(w http.ResponseWriter, r *http.Request) {
 // This handler is used to trigger the authorization flow
 func authPageHandler(w http.ResponseWriter, r *http.Request) {
 
-	// w.Header().Set("Content-Type", "application/html")
 	// Render a template with our page data
-
 	auth_uri, err := authUriTemplate(clientData)
 
 	// If we got an error, write it out and exit
@@ -132,7 +122,7 @@ func authPageHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-// Compiles the authourization request link using supplied client data (Client ID and Scopes)
+// Creates the authourization request link using supplied client data (Client ID and Scopes)
 func authUriTemplate(clientData ClientData) (string, error) {
 	// Define a basic text template
 	auth_uri := "https://api.home-connect.com/security/oauth/authorize?client_id={{.ClientId}}&response_type=code&scope={{.ClientScopes}}"
@@ -157,7 +147,7 @@ func authUriTemplate(clientData ClientData) (string, error) {
 	return out.String(), nil
 }
 
-// return success message upon successful authentication
+// Return success message upon successful authentication
 func authSuccessPageHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/text")
@@ -166,9 +156,29 @@ func authSuccessPageHandler(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+// Handle the redirect url during the application authorization flow
+func redirectHandler(w http.ResponseWriter, r *http.Request) {
+	m, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		logger.Error("Redirect Error: {query} {error}", "error", r.URL.RawQuery, err.Error())
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	code := m.Get("code")
+
+	var token Token
+	err = requestToken("AUTHORIZE", code, &token)
+	if err != nil {
+		http.Error(w, "Error geting token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "../success", http.StatusTemporaryRedirect)
+}
+
 // redirect the requests to the Home Connect API
 func redirectToHomeConnect(w http.ResponseWriter, r *http.Request) {
-	resp, err := apiRequest(w, r)
+	resp, err := apiRequest(r)
 	renderResult(w, resp, err)
 }
 
@@ -189,20 +199,20 @@ func renderResult(w http.ResponseWriter, response *http.Response, err error) {
 }
 
 // Wrapper function to make API requests to Home Connect
-func apiRequest(w http.ResponseWriter, r *http.Request) (response *http.Response, err error) {
-	endpoint := r.URL.Path
-	method := r.Method
+func apiRequest(proxyRequest *http.Request) (response *http.Response, err error) {
+	endpoint := proxyRequest.URL.Path
+	method := proxyRequest.Method
 	logger.Info("'{method}' request to '{endpoint}' received", "method", method, "endpoint", endpoint)
 	var client = &http.Client{
 		Timeout: time.Second * 10,
 	}
 
-	request, err := http.NewRequest(r.Method, BaseURL+endpoint, r.Body)
+	request, err := http.NewRequest(method, BaseURL+endpoint, proxyRequest.Body)
 	if err != nil {
 		return
 	}
 
-	err = setHeader(w, r, request)
+	err = setHeader(request)
 	if err != nil {
 		err_descr := "unable to set header for '" + endpoint + "': " + err.Error()
 		logger.Error(err_descr)
@@ -211,198 +221,4 @@ func apiRequest(w http.ResponseWriter, r *http.Request) (response *http.Response
 	}
 	response, err = client.Do(request)
 	return
-}
-
-// Handle the redirect url during the application authorization flow
-func redirectHandler(w http.ResponseWriter, r *http.Request) {
-	m, err := url.ParseQuery(r.URL.RawQuery)
-	if err != nil {
-		logger.Error("Redirect Error: {query} {error}", "error", r.URL.RawQuery, err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	code := m.Get("code")
-
-	var token Token
-	err = getToken(w, "AUTHORIZE", code, &token)
-	if err != nil {
-		http.Error(w, "Error geting token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// fmt.Fprintln(w, "Code: ", code, " Scope: ", scope)
-	http.Redirect(w, r, "../success", http.StatusTemporaryRedirect)
-}
-
-// Serialize token to disk for access when application is restarted, and for using the refresh token
-func cacheToken(token Token) (err error) {
-
-	data, err := json.Marshal(token)
-	if err != nil {
-		logger.Error("Error encoding token json to save to disk: {err}", "err", err.Error())
-		return
-	}
-
-	err = ioutil.WriteFile("token.cache", data, 0644)
-	if err != nil {
-		logger.Error("Error saving token to disk: {err}", "err", err.Error())
-		return
-	}
-	return
-}
-
-// Load the cached token file to use its refresh token
-func loadToken() (token Token, err error) {
-	file, err := ioutil.ReadFile("token.cache")
-	if err != nil {
-		logger.Error("Error reading token cache file from disk: {err}", "err", err.Error())
-		return
-	}
-	err = json.Unmarshal([]byte(file), &token)
-	if err != nil {
-		logger.Error("Error unmarshalling token cache file: {err}", "err", err.Error())
-		return
-	}
-	return
-}
-
-// Get initial auth token, or refresh it using refresh token from cache
-func getToken(w http.ResponseWriter, requestType string, code string, token *Token) (err error) {
-
-	logger.Info("Getting a new '{token}' token for API access ...", "token", requestType)
-	// initate the payload values map, will add all values in the switch below, depending if requesting a new token, or refreshing it
-	values := url.Values{}
-	values.Set("client_secret", clientData.ClientSecret)
-
-	switch requestType {
-	case "AUTHORIZE":
-		values.Set("client_id", clientData.ClientId)
-		values.Set("grant_type", "authorization_code")
-		values.Set("code", code)
-	case "REFRESH":
-		values.Set("grant_type", "refresh_token")
-		values.Set("refresh_token", code)
-	default:
-		errDescr := "unknown token type"
-		logger.Error("Get token error: {err}", "err", errDescr)
-		err = errors.New(errDescr)
-		return
-	}
-
-	// form a request with URL-encoded payload
-	req, err := http.NewRequest(http.MethodPost, TokenURL, strings.NewReader(values.Encode()))
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	// send out the HTTP request
-	logger.Info("Sending the HTTP request ...", "request_type", requestType)
-	httpClient := http.Client{}
-	resp, err := httpClient.Do(req)
-
-	if err != nil {
-		logger.Error("Error with token request: {error}", "error", err.Error())
-		return
-	}
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-
-	if resp.StatusCode != 200 {
-		err_descr := string(body)
-		logger.Error("{resp_status}: {error}", "resp_status", resp.Status, "error", err_descr)
-		err = errors.New(err_descr)
-		return
-	} else {
-		logger.Info(resp.Status)
-	}
-
-	err = json.Unmarshal(body, &token)
-
-	// decoder error
-	if err != nil {
-		err_descr := "Error decoding token request response: " + err.Error()
-		logger.Error(err_descr)
-		err = errors.New(err_descr)
-		return
-	}
-
-	//if no access token
-	if token.AccessToken == "" {
-		err_descr := "Missing access token: " + string(body)
-		logger.Error(err_descr)
-		err = errors.New(err_descr)
-		return
-	}
-
-	// calculate expiry
-	const DELTASECS = 5       // remove 5 seconds from the exipry to account for transport delay
-	if token.ExpiresIn == 0 { //no expiration, so make it a year
-		token.ExpiresIn = 31536000
-	}
-	logger.Info("token expires in '{exp}", "exp", token.ExpiresIn)
-
-	token.ExpiresAt = epochSeconds() + int64(token.ExpiresIn) - DELTASECS
-
-	t := *token //copy into t the value of the struct pointed to by token
-	err = cacheToken(t)
-	if err != nil {
-		err_descr := "Error saving token data" + err.Error()
-		logger.Error(err_descr)
-		err = errors.New(err_descr)
-		return
-	}
-
-	logger.Info("Completed getToken request for '{request_type}'", "request_type", requestType)
-	return
-}
-
-//get Access Token, refresh if expired, set header bearer token
-func setHeader(w http.ResponseWriter, r *http.Request, newReq *http.Request) (err error) {
-
-	token, err := loadToken()
-	if err != nil {
-		err_descr := "Error getting token: " + err.Error()
-		logger.Error(err_descr)
-		return
-	}
-
-	if epochSeconds() > token.ExpiresAt { //token has expired, refresh it
-		logger.Info("Access token has expired, initiating refresh...")
-		if token.RefreshToken == "" {
-			err_descr := "Refresh Token Not Found. Please re-authorize the application."
-			logger.Error(err_descr)
-			err = errors.New(err_descr)
-			return
-		}
-		var newToken Token
-		err = getToken(w, "REFRESH", token.RefreshToken, &newToken)
-		if err != nil {
-			logger.Info("Error getting new access token from refresh token: {error}", "error", err)
-			return
-		}
-		err = cacheToken(newToken)
-		if err != nil {
-			return
-		}
-		token = newToken
-	}
-	newReq.Header.Add("Authorization", "Bearer "+token.AccessToken)
-	newReq.Header.Set("Content-Type", "application/json")
-	// newReq.Header.Set("Accept", "application/json")
-	return
-}
-
-func epochSeconds() int64 {
-	now := time.Now()
-	secs := now.Unix()
-	return secs
-}
-
-type Token struct {
-	AccessToken  string `json:"access_token"`
-	ExpiresAt    int64  `json:"expires_at"`
-	ExpiresIn    int    `json:"expires_in"`
-	IdToken      string `json:"id_token"`
-	RefreshToken string `json:"refresh_token"`
-	Scope        string `json:"scope"`
-	TokenType    string `json:"token_type"`
 }
