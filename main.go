@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-
 	"os"
 
 	"github.com/ananchev/homeconnect-proxy/internal/logger"
+	"github.com/ananchev/homeconnect-proxy/internal/mqttpublisher"
 	"github.com/ananchev/homeconnect-proxy/internal/proxy"
 
 	"github.com/ilyakaznacheev/cleanenv"
@@ -23,6 +23,12 @@ type Config struct {
 		Host string `env:"HOST" env-description:"Server host" env-default:"localhost"`
 		Port string `env:"PORT" env-description:"Server port" env-default:"8088"`
 	}
+
+	MQTT struct {
+		Host  string `env:"MQTT_HOST" env-description:"MQTT Server host" env-default:"localhost"`
+		Port  string `env:"MQTT_PORT" env-description:"MQTT Server port" env-default:"1883"`
+		Topic string `env:"MQTT_TOPIC" env-description:"MQTT Topic under which to publish event data" env-default:"hc-proxy"`
+	}
 }
 
 func main() {
@@ -34,10 +40,19 @@ func main() {
 		os.Exit(2)
 	}
 
-	// file, _ := json.MarshalIndent(cfg.Commands, "", "    ")
-	// _ = ioutil.WriteFile("commands.json", file, 0644)
-
 	logger.Info("Starting the Home Connect client proxy ...")
-	proxy.Run(cfg.Server.Port, cfg.OAuth.ClientID, cfg.OAuth.ClientSecret, cfg.OAuth.ClientScopes)
+	go proxy.Run(cfg.Server.Port, cfg.OAuth.ClientID, cfg.OAuth.ClientSecret, cfg.OAuth.ClientScopes)
+
+	logger.Info("Starting the MQTT publisher for received SSE events ...")
+	mqttpublisher.InitSSEClient(cfg.Server.Port)
+	go mqttpublisher.StartMqttPublisher(cfg.MQTT.Host, cfg.MQTT.Port, cfg.MQTT.Topic)
+
+	events := make(chan mqttpublisher.Event)
+
+	go mqttpublisher.Notify(events)
+
+	for evnt := range events {
+		mqttpublisher.Publish(evnt)
+	}
 
 }
