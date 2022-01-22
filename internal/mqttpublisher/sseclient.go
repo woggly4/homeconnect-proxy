@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"time"
 
 	// "strings"
 
@@ -61,7 +62,10 @@ func Notify(evCh chan<- Event) {
 		return
 	}
 
+	// wait a sec for the proxy to be up and running before subscribing to its SSE stream
+	time.Sleep(1 * time.Second)
 	result, err := Client.Do(req)
+
 	if err != nil {
 		logger.Error("error performing sse GET request: '{e}'", "e", err)
 		return
