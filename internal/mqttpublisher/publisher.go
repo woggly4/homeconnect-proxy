@@ -13,12 +13,11 @@ var f mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
 //store here the root topic as set by StartMqttPublisher
 var RootTopic string
 
-//MQTT client
-var client mqtt.Client
+//MQTT client options
+var ClientOptions mqtt.ClientOptions
 
-//Create a ClientOptions struct setting the broker address, clientid, turn
-//off trace output and set the default message handler
-func StartMqttPublisher(server string, port string, rootTopic string) {
+//Create the ClientOptions struct
+func InitMqttPublisher(server string, port string, rootTopic string) {
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker("tcp://" + server + ":" + port)
@@ -26,8 +25,8 @@ func StartMqttPublisher(server string, port string, rootTopic string) {
 	opts.SetDefaultPublishHandler(f)
 
 	RootTopic = rootTopic
+	ClientOptions = *opts
 
-	client = mqtt.NewClient(opts)
 	logger.Info("Initialized connection to MQTT broker '{b}'", "b", server+":"+port)
 
 }
@@ -36,6 +35,7 @@ func Publish(ev Event) {
 	topic := RootTopic + "/" + ev.EquipmentID + "/" + ev.EventName
 	payload := ev.EventData
 
+	client := mqtt.NewClient(&ClientOptions)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		logger.Error("Error in MQTT client connection: '{err}'", "err", token.Error())
 		return

@@ -45,14 +45,14 @@ func main() {
 
 	logger.Info("Starting the MQTT publisher for received SSE events ...")
 	mqttpublisher.InitSSEClient(cfg.Server.Port)
-	go mqttpublisher.StartMqttPublisher(cfg.MQTT.Host, cfg.MQTT.Port, cfg.MQTT.Topic)
+	mqttpublisher.InitMqttPublisher(cfg.MQTT.Host, cfg.MQTT.Port, cfg.MQTT.Topic)
 
 	events := make(chan mqttpublisher.Event)
 
 	go mqttpublisher.Notify(events)
 
 	for evnt := range events {
-		mqttpublisher.Publish(evnt)
+		go mqttpublisher.Publish(evnt)
 	}
 
 }
