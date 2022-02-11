@@ -68,17 +68,17 @@ For monitoring a troubleshooting the application logfile can also be mapped usin
 ### Sample run command
 ```
 docker run \
-	--name homeconnect-proxy \
+    --name homeconnect-proxy \
     --net=bridge \
     -p 8088:8088 \
-	-e CLIENT_ID=<client it> \
+    -e CLIENT_ID=<client it> \
     -e CLIENT_SECRET=<client secret> \
     -e CLIENT_SCOPES=<client scope(s)> \
-	-e MQTT_HOST=<mqtt broker> \
-	-e TZ=Europe/Amsterdam \
-	-d \
-	-v <container folder>/app.log:/app.log \
-	-v <container folder>/token.cache:/token.cache \
+    -e MQTT_HOST=<mqtt broker> \
+    -e TZ=Europe/Amsterdam \
+    -d \
+    -v <container folder>/app.log:/app.log \
+    -v <container folder>/token.cache:/token.cache \
     --restart=always \
     homeconnect-proxy:latest
 ```
