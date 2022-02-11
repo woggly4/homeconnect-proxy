@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
 	// "strings"
-
-	"github.com/ananchev/homeconnect-proxy/internal/logger"
 )
 
 const (
@@ -24,9 +21,13 @@ const (
 
 // Event is the go representation of Home Connect server-sent event
 type Event struct {
-	EquipmentID string
-	EventName   string
-	EventData   string
+	EventData struct {
+		Equipment string
+		Event     string
+		Data      string
+	}
+	Action  string
+	Message string
 }
 
 var (
@@ -46,19 +47,20 @@ func InitSSEClient(port string) {
 	return
 }
 
-//Notify will send an Event down the channel when recieved
-//This is blocking, and so you will likely want to call this
-//in a new goroutine (via `go Notify(..)`)
 func Notify(evCh chan<- Event) {
 	if evCh == nil {
-		logger.Error(ErrNilChan.Error())
+		writeMessage(ErrNilChan.Error(), "error", evCh)
 		return
 	}
 
 	req, err := http.NewRequest("GET", uri, nil)
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Transfer-Encoding", "chunked")
 	if err != nil {
-		logger.Error("error in sse request: '{e}'", "e", err)
+		msg := "Error in sse request: '" + err.Error() + "'"
+		writeMessage(msg, "error", evCh)
 		return
 	}
 
@@ -67,40 +69,65 @@ func Notify(evCh chan<- Event) {
 	result, err := Client.Do(req)
 
 	if err != nil {
-		logger.Error("error performing sse GET request: '{e}'", "e", err)
+		msg := "Error performing sse GET request: '" + err.Error() + "'"
+		writeMessage(msg, "error", evCh)
 		return
 	}
-
-	// bodyReader := bufio.NewReader(result.Body)
-	bodyReader := bufio.NewReader(result.Body)
 	defer result.Body.Close()
 
-	delim := []byte{':'}
+	scanner := bufio.NewScanner(result.Body)
 
-	// currEvent := &Event{}
-	currEvent := Event{}
-
-	for {
-		bs, _, _ := bodyReader.ReadLine()
-
-		// eliminate the empty line separators
-		if len(bs) < 2 {
-			continue
+	var evnt []string
+	for scanner.Scan() {
+		text := scanner.Text()
+		// events in the stream are separated by empty line
+		if len(text) > 0 {
+			evnt = append(evnt, text)
+		} else { // empty line separator reached -> full event data read
+			writeEvent(evnt, evCh)
+			evnt = nil
 		}
+	}
 
+	if scanner.Err() != nil {
+		writeMessage("Error reading SSE stream", "error", evCh)
+		//logger.Error("Error reading SSE stream: '{e}'", "e", scanner.Err().Error())
+	} else {
+		//logger.Error("io.EOF reached")
+		writeMessage("io.EOF reached ...", "reconnect", evCh)
+	}
+}
+
+func writeMessage(err string, action string, evCh chan<- Event) {
+	event := Event{}
+	event.Message = err
+	event.Action = action
+	evCh <- event
+}
+
+// Publish an Event down the channel upon validating
+// it is not of 'keep alive' type
+func writeEvent(evntSlice []string, evCh chan<- Event) {
+	if len(evntSlice) < 3 {
+		// non 'keep alive' events would always contain 3 lines for resp. event type, event data and equipment id
+		return
+	}
+	event := Event{}
+
+	for i := range evntSlice {
+		b := []byte(evntSlice[i])
 		// split by the first occurence of ':'
-		spl := bytes.SplitN(bs, delim, 2)
+		spl := bytes.SplitN(b, []byte{':'}, 2)
 
 		switch string(spl[0]) {
 		case eventName:
-			currEvent.EventName = string(spl[1])
+			event.EventData.Event = string(spl[1])
 		case dataName:
-			currEvent.EventData = string(spl[1])
+			event.EventData.Data = string(spl[1])
 		case eqidName:
-			currEvent.EquipmentID = string(spl[1])
-			// write event to the channel only if id is found at the end
-			evCh <- currEvent
+			event.EventData.Equipment = string(spl[1])
 		}
 	}
-
+	// write event to the channel
+	evCh <- event
 }

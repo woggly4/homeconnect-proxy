@@ -7,7 +7,6 @@ import (
 	"github.com/ananchev/homeconnect-proxy/internal/logger"
 	"github.com/ananchev/homeconnect-proxy/internal/mqttpublisher"
 	"github.com/ananchev/homeconnect-proxy/internal/proxy"
-
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
@@ -45,14 +44,30 @@ func main() {
 
 	logger.Info("Starting the MQTT publisher for received SSE events ...")
 	mqttpublisher.InitSSEClient(cfg.Server.Port)
+
 	mqttpublisher.InitMqttPublisher(cfg.MQTT.Host, cfg.MQTT.Port, cfg.MQTT.Topic)
 
-	events := make(chan mqttpublisher.Event)
-
-	go mqttpublisher.Notify(events)
-
-	for evnt := range events {
-		go mqttpublisher.Publish(evnt)
+	exitLoop := false
+	for !exitLoop {
+		runPublisher(&exitLoop)
 	}
+}
 
+func runPublisher(exit *bool) {
+	events := make(chan mqttpublisher.Event)
+	go mqttpublisher.Notify(events)
+	for evnt := range events {
+		switch evnt.Action {
+		case "reconnect":
+			logger.Info("Reconnect SSE: '{r}'", "r", evnt.Message)
+			return
+		case "error":
+			logger.Error("Error in SSE client: '{e}'", "e", evnt.Message)
+			*exit = true
+			return
+		default:
+			logger.Info("Event received by MQTT publisher")
+			go mqttpublisher.Publish(evnt)
+		}
+	}
 }

@@ -5,42 +5,38 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-//define a function for the default message handler
-var f mqtt.MessageHandler = func(client mqtt.Client, msg mqtt.Message) {
-	logger.Info("Event '{event}' data publised to mqtt topic '{topic}'", "event", "event", "topic", "topic")
-}
-
-//store here the root topic as set by StartMqttPublisher
+//store here publisher params
 var RootTopic string
-
-//MQTT client options
-var ClientOptions mqtt.ClientOptions
+var Server string
+var Port string
 
 //Create the ClientOptions struct
 func InitMqttPublisher(server string, port string, rootTopic string) {
-
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker("tcp://" + server + ":" + port)
-	opts.SetClientID("homeconnect-proxy")
-	opts.SetDefaultPublishHandler(f)
-
 	RootTopic = rootTopic
-	ClientOptions = *opts
-
-	logger.Info("Initialized connection to MQTT broker '{b}'", "b", server+":"+port)
-
+	Server = server
+	Port = port
+	logger.Info("Initialized MQTT publisher for broker '{b}' and root topic '{rt}'", "b", server+":"+port, "rt", rootTopic)
 }
 
 func Publish(ev Event) {
-	topic := RootTopic + "/" + ev.EquipmentID + "/" + ev.EventName
-	payload := ev.EventData
 
-	client := mqtt.NewClient(&ClientOptions)
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker("tcp://" + Server + ":" + Port)
+	opts.SetClientID("homeconnect-proxy")
+
+	opts.OnConnectionLost = func(c mqtt.Client, e error) {
+		logger.Error("Connection to mqtt server lost: '{error}'", "error", e.Error())
+	}
+
+	topic := RootTopic + "/" + ev.EventData.Equipment + "/" + ev.EventData.Event
+	payload := ev.EventData.Data
+
+	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		logger.Error("Error in MQTT client connection: '{err}'", "err", token.Error())
 		return
 	}
-
+	logger.Info("Publishing event '{evnt}' for equipment '{eq}'", "evnt", ev.EventData.Event, "eq", ev.EventData.Equipment)
 	token := client.Publish(topic, 0, false, payload)
 	token.Wait()
 
