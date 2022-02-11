@@ -43,7 +43,7 @@ The stream can be accessed via the respective endpoints of the proxy. Additional
 
 ## Build
 The intended way to run is in a Docker container and the Dockerfile to create its image is provided. 
-To build, clone the repository and run ```docker build -t neterra-proxy .```
+To build, clone the repository and run ```docker build -t homeconnect-proxy .```
 The app can also be compiled and run natively.
 
 ## Configuration
