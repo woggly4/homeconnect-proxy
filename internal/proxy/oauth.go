@@ -35,7 +35,7 @@ func cacheToken(token Token) (err error) {
 		return
 	}
 
-	err = ioutil.WriteFile("token.cache", data, 0644)
+	err = ioutil.WriteFile("data/token.cache", data, 0644)
 	if err != nil {
 		logger.Error("Error saving token to disk: {err}", "err", err.Error())
 		return
@@ -45,7 +45,7 @@ func cacheToken(token Token) (err error) {
 
 // Load the cached token file to use its refresh token
 func loadCachedToken() (token Token, err error) {
-	file, err := ioutil.ReadFile("token.cache")
+	file, err := ioutil.ReadFile("data/token.cache")
 	if err != nil {
 		logger.Error("Error reading token cache file from disk: {err}", "err", err.Error())
 		return
